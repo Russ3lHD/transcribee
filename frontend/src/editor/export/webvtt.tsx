@@ -9,14 +9,21 @@ import { pushToPodlove, checkIsPodloveExportPossible } from '../../utils/export_
 import { ExportProps } from '.';
 import { PrimaryButton, SecondaryButton, IconButton } from '../../components/button';
 import { BsEye, BsEyeSlash } from 'react-icons/bs';
+import { useTimecodeOffset } from '../../utils/document';
 
 type ExportFormat = SubtitleFormat | 'podlove';
 
-export function WebVttExportBody({ onClose, outputNameBase, editor }: ExportProps) {
+export function WebVttExportBody({
+  onClose,
+  outputNameBase,
+  editor,
+}: Omit<ExportProps, 'startTimecode'>) {
   const [includeSpeakerNames, setIncludeSpeakerNames] = useState(true);
   const [includeWordTimings, setIncludeWordTimings] = useState(false);
   const [limitLineLength, setLimitLineLength] = useState(false);
   const [maxLineLength, setMaxLineLength] = useState(60);
+  const [framerate, setFramerate] = useState(25);
+  const [offset] = useTimecodeOffset(editor);
 
   const [podloveEpisodeId, setPodloveEpisodeId] = useState(1);
   const [podloveUser, setPodloveUser] = useState('');
@@ -24,6 +31,7 @@ export function WebVttExportBody({ onClose, outputNameBase, editor }: ExportProp
   const [podloveApplicationId, setPodloveId] = useState('');
   const [podloveUrl, setPodloveUrl] = useState('');
   const [podloveExportPossible, setPodloveExportPossible] = useState(false);
+
   useEffect(() => {
     checkIsPodloveExportPossible(
       podloveEpisodeId,
@@ -36,8 +44,52 @@ export function WebVttExportBody({ onClose, outputNameBase, editor }: ExportProp
   const [format, setFormat] = useState('vtt' as ExportFormat);
   const canExport = useMemo(() => canGenerateVtt(editor.doc.children), [editor.v]);
 
+  const applyTimecodeOffset = (seconds: number, timecode: string) => {
+    const [hours, minutes, secs, frames] = timecode.split(':').map(Number);
+    const offsetInSeconds = hours * 3600 + minutes * 60 + secs + frames / framerate;
+    return seconds + offsetInSeconds;
+  };
+
   return (
-    <form className="flex flex-col gap-4 pt-2">
+    <form className="flex flex-col gap-4 pt-2" onSubmit={(e) => {
+      e.preventDefault();
+      const vtt = generateWebVtt(
+        Automerge.toJS(editor.doc),
+        includeSpeakerNames,
+        includeWordTimings,
+        maxLineLength,
+        (start) => applyTimecodeOffset(start, offset || '00:00:00:00')
+      );
+
+      if (format === 'vtt' || format === 'srt') {
+        downloadTextAsFile(
+          `${outputNameBase}.${format}`,
+          `text/${format}`,
+          vtt.toString(format),
+        );
+      } else {
+        pushToPodlove(
+          podloveEpisodeId,
+          podloveUser,
+          podloveApplicationId,
+          podloveUrl,
+          vtt.toString('vtt'),
+        );
+      }
+      onClose();
+    }}>
+      <FormControl label="Framerate">
+        <Select
+          value={framerate}
+          onChange={(e) => setFramerate(parseInt(e.target.value))}
+        >
+          {[24, 25, 30].map((fps) => (
+            <option key={fps} value={fps}>
+              {fps} fps
+            </option>
+          ))}
+        </Select>
+      </FormControl>
       <FormControl label="Format">
         <Select
           value={format}
@@ -47,7 +99,7 @@ export function WebVttExportBody({ onClose, outputNameBase, editor }: ExportProp
               e.target.value === 'vtt' ||
               e.target.value === 'podlove'
             ) {
-              setFormat(e.target.value);
+              setFormat(e.target.value as ExportFormat);
             }
           }}
         >
@@ -170,31 +222,6 @@ export function WebVttExportBody({ onClose, outputNameBase, editor }: ExportProp
         </SecondaryButton>
         <PrimaryButton
           type="submit"
-          onClick={(e) => {
-            e.preventDefault();
-            const vtt = generateWebVtt(
-              Automerge.toJS(editor.doc),
-              includeSpeakerNames,
-              includeWordTimings,
-              maxLineLength,
-            );
-            if (format === 'vtt' || format === 'srt') {
-              downloadTextAsFile(
-                `${outputNameBase}.${format}`,
-                `text/${format}`,
-                vtt.toString(format),
-              );
-            } else {
-              pushToPodlove(
-                podloveEpisodeId,
-                podloveUser,
-                podloveApplicationId,
-                podloveUrl,
-                vtt.toString('vtt'),
-              );
-            }
-            onClose();
-          }}
           disabled={!canExport.canGenerate || (!podloveExportPossible && format == 'podlove')}
         >
           Export

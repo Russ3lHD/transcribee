@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import * as Automerge from '@automerge/automerge';
 
 import { Checkbox } from '../../components/form';
@@ -7,10 +7,24 @@ import { ExportProps } from '.';
 import { HttpReader, Uint8ArrayReader, ZipWriter, Uint8ArrayWriter } from '@zip.js/zip.js';
 import { sortMediaFiles } from '../../utils/use_audio';
 import { LoadingSpinnerButton, SecondaryButton } from '../../components/button';
+import { useTimecodeOffset } from '../../utils/document';
 
-export function TranscribeeExportBody({ onClose, outputNameBase, editor, document }: ExportProps) {
+export function TranscribeeExportBody({
+  onClose,
+  outputNameBase,
+  editor,
+  document,
+}: ExportProps) {
   const [loading, setLoading] = useState(false);
   const [includeOriginalMediaFile, setIncludeOriginalMediaFile] = useState(false);
+  const [offset, setOffset] = useTimecodeOffset(editor);
+  const [localTimecode, setLocalTimecode] = useState(offset || '00:00:00:00');
+
+  useEffect(() => {
+    if (offset) {
+      setLocalTimecode(offset);
+    }
+  }, [offset]);
 
   const bestMediaUrl = useMemo(() => {
     const mappedFiles =
@@ -31,6 +45,12 @@ export function TranscribeeExportBody({ onClose, outputNameBase, editor, documen
       }
     }
   }, [document?.media_files]);
+
+  const applyTimecodeOffset = (seconds: number, timecode: string) => {
+    const [hours, minutes, secs, frames] = timecode.split(':').map(Number);
+    const offsetInSeconds = hours * 3600 + minutes * 60 + secs + frames / 30; // Assuming 30 fps
+    return seconds + offsetInSeconds;
+  };
 
   return (
     <form className="flex flex-col gap-4 mt-4">
@@ -55,11 +75,23 @@ export function TranscribeeExportBody({ onClose, outputNameBase, editor, documen
             e.preventDefault();
             setLoading(true);
             try {
+              const adjustedDoc = Automerge.change(editor.doc, (doc) => {
+                doc.children.forEach((para) => {
+                  para.children.forEach((child) => {
+                    if (child.start !== undefined) {
+                      child.start = applyTimecodeOffset(child.start, localTimecode);
+                    }
+                    if (child.end !== undefined) {
+                      child.end = applyTimecodeOffset(child.end, localTimecode);
+                    }
+                  });
+                });
+              });
               const mediaUrl =
                 includeOriginalMediaFile && originalMediaUrl ? originalMediaUrl : bestMediaUrl;
               const zipFileWriter = new Uint8ArrayWriter();
               const zipWriter = new ZipWriter(zipFileWriter, { level: 0 });
-              const doc = new Uint8ArrayReader(Automerge.save(editor.doc));
+              const doc = new Uint8ArrayReader(Automerge.save(adjustedDoc));
               await Promise.all([
                 zipWriter.add('document.automerge', doc),
                 zipWriter.add('media', new HttpReader(mediaUrl, { preventHeadRequest: true })),

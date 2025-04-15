@@ -1,4 +1,4 @@
-import { ComponentProps, useState } from 'react';
+import { ComponentProps, useState, useEffect } from 'react';
 import { Editor } from 'slate';
 
 import { FormControl, Input, Select } from '../../components/form';
@@ -7,6 +7,9 @@ import { WebVttExportBody } from './webvtt';
 import { TranscribeeExportBody } from './transcribee';
 import { ApiDocument } from '../../api/document';
 import { PlaintextExportBody } from './plaintext';
+import { AvidMarkerFileExportBody } from './avid_marker_file';
+import { useTimecodeOffset } from '../../utils/document';
+import * as Automerge from '@automerge/automerge';
 
 export type ExportProps = {
   outputNameBase: string;
@@ -38,6 +41,10 @@ const exportTypes: ExportType[] = [
     name: 'Transcribee Archive',
     component: TranscribeeExportBody,
   },
+  {
+    name: 'Avid Marker',
+    component: AvidMarkerFileExportBody,
+  },
 ];
 
 export function ExportModal({
@@ -51,9 +58,31 @@ export function ExportModal({
   document: ApiDocument;
 } & Omit<ComponentProps<typeof Modal>, 'label'>) {
   const [exportType, setExportType] = useState(exportTypes[0]);
-  const ExportBodyComponent = exportType.component;
-
   const [outputNameBase, setOutputNameBase] = useState(document?.name || 'document');
+  const [offset, setOffset] = useTimecodeOffset(editor);
+  const [localTimecode, setLocalTimecode] = useState(offset || '00:00:00:00');
+
+  // Keep local timecode in sync with document timecode
+  useEffect(() => {
+    if (offset) {
+      setLocalTimecode(offset);
+    }
+  }, [offset]);
+
+  const updateTimecode = (newTimecode: string) => {
+    setLocalTimecode(newTimecode);
+    try {
+      const clonedDoc = Automerge.clone(editor.doc);
+      const newDoc = Automerge.change(clonedDoc, (doc) => {
+        doc.timecodeOffset = newTimecode;
+      });
+      editor.onChange(newDoc);
+    } catch (error) {
+      console.error('Error updating timecode:', error);
+    }
+  };
+
+  const ExportBodyComponent = exportType.component;
 
   return (
     <Modal {...props} onClose={onClose} label="Export as …">
@@ -78,6 +107,13 @@ export function ExportModal({
           onChange={(e) => {
             setOutputNameBase(e.target.value);
           }}
+        />
+      </FormControl>
+      <FormControl label={'Start Timecode (HH:MM:SS:FF)'} className="mt-2">
+        <Input
+          value={localTimecode}
+          onChange={(e) => updateTimecode(e.target.value)}
+          placeholder="00:00:00:00"
         />
       </FormControl>
       <ExportBodyComponent
