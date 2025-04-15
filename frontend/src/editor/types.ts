@@ -16,6 +16,7 @@ export type Document = {
   children: Paragraph[];
   speaker_names: Record<string, string>;
   version: number;
+  timecodeOffset?: string; // Optional field for backward compatibility
 };
 
 // we fire this event when the user clicks on a word and we want the player to skip through it
