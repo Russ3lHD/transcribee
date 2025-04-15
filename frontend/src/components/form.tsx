@@ -94,6 +94,14 @@ export function Checkbox({
   );
 }
 
+export const SecondaryButton = (props) => {
+  return <button className="secondary-button" {...props}>{props.children}</button>;
+};
+
+export const PrimaryButton = (props) => {
+  return <button className="primary-button" {...props}>{props.children}</button>;
+};
+
 export const Select = primitiveWithClassname('select', [
   'block',
   'w-full',
