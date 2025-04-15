@@ -2,6 +2,7 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { useSlateStatic } from 'slate-react';
 import { Editor } from 'slate';
 import { Document } from '../editor/types';
+import * as Automerge from '@automerge/automerge';
 
 export function getSpeakerName(
   speaker: string | null,
@@ -82,4 +83,26 @@ export function useSpeakerIDs(editor?: Editor) {
     }, []),
     { eq: compareJSON, editor: editor },
   );
+}
+
+export function useTimecodeOffset(editor?: Editor): [string | undefined, (offset: string) => void] {
+  const setOffset = useCallback((offset: string) => {
+    const theEditor = editor ?? useSlateStatic();
+    try {
+      const clonedDoc = Automerge.clone(theEditor.doc);
+      const newDoc = Automerge.change(clonedDoc, (doc: Document) => {
+        doc.timecodeOffset = offset;
+      });
+      theEditor.onChange(newDoc);
+    } catch (error) {
+      console.error('Error updating timecode offset:', error);
+    }
+  }, [editor]);
+
+  const offset = useDocumentSelector(
+    useCallback((doc: Document) => doc.timecodeOffset, []),
+    { editor }
+  );
+
+  return [offset, setOffset];
 }
