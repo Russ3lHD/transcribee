@@ -149,6 +149,7 @@ export function generateWebVtt(
   includeSpeakerNames: boolean,
   includeWordTimings: boolean,
   maxLineLength: number | null,
+  applyTimecodeOffset?: (seconds: number) => number,
 ): WebVtt {
   const vtt = new WebVtt(
     'This file was generated using transcribee. Find out more at https://github.com/bugbakery/transcribee',
@@ -164,6 +165,14 @@ export function generateWebVtt(
       maxLineLength,
       doc.speaker_names,
     )) {
+      // Get base time without any previous offsets
+      const baseStartTime = cue.startTime;  
+      const baseEndTime = cue.endTime;
+      
+      if (applyTimecodeOffset) {
+        cue.startTime = applyTimecodeOffset(baseStartTime);
+        cue.endTime = applyTimecodeOffset(baseEndTime);
+      }
       vtt.add(cue);
     }
   }

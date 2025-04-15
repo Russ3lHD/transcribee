@@ -6,6 +6,7 @@ export function generatePlaintext(
   doc: Document,
   includeSpeakerNames: boolean,
   includeTimestamps: boolean,
+  applyTimecodeOffset?: (seconds: number) => number,
 ): string {
   let last_speaker: string | null = null;
   return doc.children
@@ -19,7 +20,11 @@ export function generatePlaintext(
         paragraphText += '\n';
       }
       if (includeTimestamps && (last_speaker !== paragraph.speaker || !includeSpeakerNames)) {
-        paragraphText += `[${formattedTime(paragraph.children[0].start)}]\n`;
+        const timestamp = paragraph.children[0].start;
+        const adjustedTime = timestamp !== undefined && applyTimecodeOffset
+          ? applyTimecodeOffset(timestamp)
+          : timestamp;
+        paragraphText += `[${formattedTime(adjustedTime)}]\n`;
       }
       if (includeSpeakerNames && last_speaker !== paragraph.speaker) {
         paragraphText += `${getSpeakerName(paragraph.speaker, doc.speaker_names)}:\n`;
